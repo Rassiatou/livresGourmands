@@ -6,7 +6,7 @@
 
 ## Informations  
 - Date : 10 septembre 2025  
-- Cours : Programmation Web Avancée (420-WA6-AG)  
+- Cours : Programmation Web Avancée  
 - Enseignant : Kahina Tamazouzt  
 
 ## Objectifs du projet  
