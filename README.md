@@ -35,4 +35,3 @@ Le site proposera :
 - README.md complet.  
 - Diagramme de cas d’utilisation (PDF ou image).  
 - Diagramme de classes (première ébauche, PDF ou image).
-- Un test de Mamadou
