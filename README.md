@@ -34,4 +34,5 @@ Le site proposera :
 - URL du dépôt GitHub.  
 - README.md complet.  
 - Diagramme de cas d’utilisation (PDF ou image).  
-- Diagramme de classes (première ébauche, PDF ou image).  
+- Diagramme de classes (première ébauche, PDF ou image).
+- Un test de Mamadou
