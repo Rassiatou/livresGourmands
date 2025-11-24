@@ -3,8 +3,9 @@ import jwt from "jsonwebtoken";
 import { pool } from "../db.js";
 
 function sign(user) {
+  // user.id (et plus idUser)
   return jwt.sign(
-    { id: user.idUser, email: user.email, role: user.role },
+    { id: user.id, email: user.email, role: user.role },
     process.env.JWT_SECRET,
     { expiresIn: "7d" }
   );
@@ -17,22 +18,30 @@ export async function register(req, res) {
     if (!nom || !email || !password) {
       return res.status(400).json({ error: "nom, email, password requis" });
     }
+
+    // vérifier si l'email existe déjà
     const [exists] = await pool.query(
-      "SELECT idUser FROM users WHERE email=?",
+      "SELECT id FROM users WHERE email=?",
       [email]
     );
     if (exists.length)
       return res.status(409).json({ error: "Email déjà utilisé" });
 
+    // hash du mot de passe
     const hash = await bcrypt.hash(password, 10);
+
+    // insertion
     const [r] = await pool.query(
       "INSERT INTO users(nom,email,password_hash,role) VALUES (?,?,?,?)",
       [nom, email, hash, role]
     );
+
+    // récupérer l'utilisateur créé
     const [[user]] = await pool.query(
-      "SELECT idUser, email, role FROM users WHERE idUser=?",
+      "SELECT id, email, role FROM users WHERE id=?",
       [r.insertId]
     );
+
     const token = sign(user);
     res.status(201).json({ token, user });
   } catch (e) {
@@ -56,13 +65,14 @@ export async function login(req, res) {
       return res.status(401).json({ error: "Identifiants invalides" });
 
     const user = rows[0];
+
     const ok = await bcrypt.compare(password, user.password_hash);
     if (!ok) return res.status(401).json({ error: "Identifiants invalides" });
 
     const token = sign(user);
     res.json({
       token,
-      user: { idUser: user.idUser, email: user.email, role: user.role },
+      user: { id: user.id, email: user.email, role: user.role },
     });
   } catch (e) {
     console.error("LOGIN_ERR:", e);
@@ -74,13 +84,14 @@ export async function login(req, res) {
 export async function me(req, res) {
   try {
     const [[user]] = await pool.query(
-      "SELECT idUser, nom, email, role, actif, created_at FROM users WHERE idUser=?",
-      [req.user.id]
+      "SELECT id, nom, email, role, actif, created_at FROM users WHERE id=?",
+      [req.user.id]      // ici aussi, on utilise id
     );
     if (!user)
       return res.status(404).json({ error: "Utilisateur introuvable" });
     res.json(user);
   } catch (e) {
+    console.error("ME_ERR:", e);
     res.status(500).json({ error: "Erreur lecture profil" });
   }
 }
