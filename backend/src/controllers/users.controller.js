@@ -6,7 +6,7 @@ export async function list(req, res) {
   try {
     const { q = "", role, actif } = req.query;
     const params = [];
-    let sql = `SELECT idUser, nom, email, role, actif, created_at, updated_at FROM users WHERE 1=1`;
+    let sql = `SELECT id, nom, email, role, actif, created_at, updated_at FROM users WHERE 1=1`;
     if (q) {
       sql += " AND (nom LIKE ? OR email LIKE ?)";
       params.push(`%${q}%`, `%${q}%`);
@@ -28,12 +28,12 @@ export async function list(req, res) {
   }
 }
 
-/** GET /api/users/:idUser */
+/** GET /api/users/:Id */
 export async function getOne(req, res) {
   try {
-    const id = Number(req.params.idUser);
+    const id = Number(req.params.id);
     const [rows] = await pool.query(
-      `SELECT idUser, nom, email, role, actif, created_at, updated_at FROM users WHERE idUser=?`,
+      `SELECT id, nom, email, role, actif, created_at, updated_at FROM users WHERE id=?`,
       [id]
     );
     if (!rows.length)
@@ -57,7 +57,7 @@ export async function create(req, res) {
       });
     }
 
-    const [exists] = await pool.query("SELECT idUser FROM users WHERE email=?", [email]);
+    const [exists] = await pool.query("SELECT id FROM users WHERE email=?", [email]);
     if (exists.length) return res.status(409).json({ error: "Email déjà utilisé" });
 
     const hash = password_hash || await bcrypt.hash(password, 10);
@@ -69,7 +69,7 @@ export async function create(req, res) {
 
     return res.status(201).json({
       message: "Utilisateur créé avec succès",
-      user: { idUser: r.insertId, nom, email, role }
+      user: { id: r.insertId, nom, email, role }
     });
   } catch (e) {
     console.error("USERS_CREATE_ERR:", e);
@@ -78,10 +78,10 @@ export async function create(req, res) {
 }
 
 
-/** PUT /api/users/:idUser  (mettre à jour nom/role/actif) */
+/** PUT /api/users/:Id  (mettre à jour nom/role/actif) */
 export async function update(req, res) {
   try {
-    const id = Number(req.params.idUser);
+    const id = Number(req.params.id);
     const { nom, role, actif } = req.body;
     await pool.query(
       `UPDATE users
@@ -89,11 +89,11 @@ export async function update(req, res) {
            role = COALESCE(?, role),
            actif = COALESCE(?, actif),
            updated_at = NOW()
-       WHERE idUser=?`,
+       WHERE Id=?`,
       [nom ?? null, role ?? null, actif != null ? Number(actif) : null, id]
     );
     const [rows] = await pool.query(
-      `SELECT idUser, nom, email, role, actif, created_at, updated_at FROM users WHERE idUser=?`,
+      `SELECT Id, nom, email, role, actif, created_at, updated_at FROM users WHERE Id=?`,
       [id]
     );
     if (!rows.length)
@@ -105,11 +105,11 @@ export async function update(req, res) {
   }
 }
 
-/** DELETE /api/users/:idUser */
+/** DELETE /api/users/:Id */
 export async function remove(req, res) {
   try {
-    const id = Number(req.params.idUser);
-    await pool.query(`DELETE FROM users WHERE idUser=?`, [id]);
+    const id = Number(req.params.Id);
+    await pool.query(`DELETE FROM users WHERE Id=?`, [id]);
     res.status(204).end();
   } catch (e) {
     console.error("USERS_DELETE_ERR:", e);

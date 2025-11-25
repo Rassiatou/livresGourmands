@@ -1,12 +1,23 @@
 import { Router } from "express";
-import { listByCommande, addItem, updateItem, removeItem } from "../controllers/commandesItems.controller.js";
+import {
+  listByCommande,
+  addItem,
+  updateItem,
+  removeItem
+} from "../controllers/commandesItems.controller.js";
 
-// mergeParams pour récupérer :idCommande depuis le parent
 const router = Router({ mergeParams: true });
 
-router.get("/", listByCommande);
-router.post("/", addItem);
-router.put("/:idItem", updateItem);
-router.delete("/:idItem", removeItem);
+// GET /api/commandes/:idCommande/items
+router.get("/items", listByCommande);
+
+// POST /api/commandes/:idCommande/items
+router.post("/items", addItem);
+
+// PUT /api/commandes/:idCommande/items/:idItem
+router.put("/items/:idItem", updateItem);
+
+// DELETE /api/commandes/:idCommande/items/:idItem
+router.delete("/items/:idItem", removeItem);
 
 export default router;

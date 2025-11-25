@@ -31,28 +31,38 @@ app.use(
 app.use(express.json());
 app.use(morgan("dev"));
 
-// --- Routes de test ---
+// --- Routes simples de test ---
 app.get("/", (req, res) => {
   res.send("API LivresGourmands en ligne ✅");
 });
 
 app.get("/health", (req, res) => res.json({ ok: true }));
 
-// --- Routes API ---
+// --- ROUTES API PRINCIPALES ---
 
-// Auth : on supporte /auth ET /api/auth
-app.use("/auth", authRoutes);       // ex : POST http://localhost:3001/auth/register
-app.use("/api/auth", authRoutes);   // ex : POST http://localhost:3001/api/auth/register
+// Authentification (spécification)
+app.use("/api/auth", authRoutes);  
 
+// Ressources principales
 app.use("/api/categories", categoriesRoutes);
 app.use("/api/ouvrages", ouvragesRoutes);
 app.use("/api/avis", avisRoutes);
-app.use("/api/commandes", commandesRoutes);
-app.use("/api/commandes/:idCommande/items", commandesItemsRoutes);
 app.use("/api/commentaires", commentairesRoutes);
+
+// Gestion des utilisateurs (admin)
 app.use("/api/users", usersRoutes);
+
+// Panier
 app.use("/api/panier", panierRoutes);
 app.use("/api/panierItems", panierItemsRoutes);
+
+// Commandes
+app.use("/api/commandes", commandesRoutes);
+
+// Items de commande (IMPORTANT : doit inclure :idCommande)
+app.use("/api/commandes/:idCommande", commandesItemsRoutes);
+
+// Listes cadeaux
 app.use("/api/liste", listesRoutes);
 
 // --- 404 ---
@@ -60,7 +70,7 @@ app.use((req, res) => {
   res.status(404).json({ error: "Not found" });
 });
 
-// --- Gestion d’erreurs ---
+// --- Gestion d’erreurs globales ---
 app.use((err, req, res, next) => {
   console.error("SERVER_ERROR:", err);
   res.status(500).json({ error: "Server error" });

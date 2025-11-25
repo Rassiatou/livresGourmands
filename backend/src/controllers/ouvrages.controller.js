@@ -1,31 +1,41 @@
 import { pool } from "../db.js";
 
 /** GET /api/ouvrages?texte=&categorie= */
-
 export async function list(req, res) {
   try {
     const { texte = "", categorie } = req.query;
     const params = [];
+
     let sql = `
       SELECT 
-        o.idOuvrage, o.titre, o.auteur, o.description, o.prix, o.stock,
-        o.categorie_idCategorie, c.nom AS categorie_nom, o.created_at, o.updated_at
+        o.id AS id,
+        o.titre,
+        o.auteur,
+        o.description,
+        o.prix,
+        o.stock,
+        o.categorie_id AS categorie_id,
+        c.nom AS categorie_nom,
+        o.created_at,
+        o.updated_at
       FROM ouvrages o
-      LEFT JOIN categories c ON c.idCategorie = o.categorie_idCategorie
+      LEFT JOIN categories c ON c.id = o.categorie_id
       WHERE 1=1
     `;
 
-    // règle: si tu veux n’afficher que le stock > 0, dé-commente :
+    // règle: si tu veux n’afficher que le stock > 0
     sql += " AND o.stock > 0";
 
     if (texte) {
       sql += " AND (o.titre LIKE ? OR o.auteur LIKE ?)";
       params.push(`%${texte}%`, `%${texte}%`);
     }
+
     if (categorie) {
-      sql += " AND o.categorie_idCategorie = ?";
+      sql += " AND o.categorie_id = ?";
       params.push(Number(categorie));
     }
+
     sql += " ORDER BY o.created_at DESC";
 
     const [rows] = await pool.query(sql, params);
@@ -37,6 +47,7 @@ export async function list(req, res) {
       .json({ error: e.code || e.message || "Erreur liste ouvrages" });
   }
 }
+
 
 export async function details(req, res) {
   const { id } = req.params;

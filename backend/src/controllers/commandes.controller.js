@@ -1,20 +1,34 @@
 import { pool } from "../db.js";
-
-/** GET /api/commandes?userId= */
 export async function list(req, res) {
   try {
     const { userId } = req.query;
     const params = [];
+
     let sql = `
-      SELECT c.idCommande, c.user_idUser, c.date_commande, c.total, c.statut,
-             c.adresse_livraison, c.mode_livraison, c.mode_paiement
+      SELECT 
+        c.id,
+        c.user_id,
+        c.date_commande,
+        c.statut,
+        c.total,
+        c.mode_paiement,
+        c.payment_provider_id AS reference_paiement,
+        c.adresse_livraison,
+        c.mode_livraison,
+        c.created_at,
+        c.updated_at,
+        u.nom AS user_nom,
+        u.email AS user_email
       FROM commandes c
+      LEFT JOIN users u ON u.id = c.user_id
       WHERE 1=1
     `;
+
     if (userId) {
-      sql += " AND c.user_idUser = ?";
+      sql += " AND c.user_id = ?";
       params.push(Number(userId));
     }
+
     sql += " ORDER BY c.date_commande DESC";
 
     const [rows] = await pool.query(sql, params);
@@ -31,22 +45,26 @@ export async function list(req, res) {
 export async function details(req, res) {
   try {
     const id = Number(req.params.idCommande);
+
     const [[cmd]] = await pool.query(
-      `SELECT c.*
-       FROM commandes c
-       WHERE c.idCommande = ?`,
+      `SELECT * FROM commandes WHERE id = ?`,
       [id]
     );
+
     if (!cmd) return res.status(404).json({ error: "Commande introuvable" });
 
     const [items] = await pool.query(
-      `SELECT ci.idItem, ci.quantite, ci.prix_unitaire,
-              o.idOuvrage, o.titre
-       FROM commandes_items ci
-       JOIN ouvrages o ON o.idOuvrage = ci.ouvrage_idOuvrage
-       WHERE ci.commande_idCommande = ?`,
+      `SELECT 
+         cl.ouvrage_id,
+         cl.quantite,
+         cl.prix_unitaire,
+         o.titre
+       FROM commande_lignes cl
+       JOIN ouvrages o ON o.id = cl.ouvrage_id
+       WHERE cl.commande_id = ?`,
       [id]
     );
+
     res.json({ ...cmd, items });
   } catch (e) {
     console.error("CMD_DETAILS_ERR:", e);
@@ -58,13 +76,13 @@ export async function details(req, res) {
  * POST /api/commandes
  * Body:
  * {
- *   "user_idUser": 3,
- *   "adresse_livraison": "123 Rue Test",
+ *   "user_id": 3,
+ *   "adresse_livraison": "123 rue Test",
  *   "mode_livraison": "standard",
  *   "mode_paiement": "carte",
  *   "items": [
- *     { "ouvrage_idOuvrage": 1, "quantite": 2, "prix_unitaire": 14.99 },
- *     { "ouvrage_idOuvrage": 3, "quantite": 1, "prix_unitaire": 19.99 }
+ *     { "ouvrage_id": 1, "quantite": 2, "prix_unitaire": 14.99 },
+ *     { "ouvrage_id": 3, "quantite": 1, "prix_unitaire": 19.99 }
  *   ]
  * }
  */
@@ -72,17 +90,17 @@ export async function create(req, res) {
   const conn = await pool.getConnection();
   try {
     const {
-      user_idUser,
+      user_id,
       adresse_livraison,
       mode_livraison,
       mode_paiement,
       items,
     } = req.body;
-    if (!user_idUser || !Array.isArray(items) || items.length === 0) {
-      return res.status(400).json({ error: "user_idUser et items requis" });
+
+    if (!user_id || !Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ error: "user_id et items requis" });
     }
 
-    // calcule le total côté serveur
     const total = items.reduce(
       (s, it) => s + Number(it.prix_unitaire) * Number(it.quantite),
       0
@@ -91,79 +109,84 @@ export async function create(req, res) {
     await conn.beginTransaction();
 
     const [r] = await conn.query(
-      `INSERT INTO commandes (user_idUser, total, statut, adresse_livraison, mode_livraison, mode_paiement)
+      `INSERT INTO commandes (user_id, total, statut, adresse_livraison, mode_livraison, mode_paiement)
        VALUES (?, ?, 'en_attente', ?, ?, ?)`,
       [
-        Number(user_idUser),
+        Number(user_id),
         total,
         adresse_livraison ?? null,
         mode_livraison ?? null,
         mode_paiement ?? null,
       ]
     );
+
     const idCommande = r.insertId;
 
-    // insert des items + décrément du stock
     for (const it of items) {
       await conn.query(
-        `INSERT INTO commandes_items (commande_idCommande, ouvrage_idOuvrage, quantite, prix_unitaire)
-         VALUES (?,?,?,?)`,
+        `INSERT INTO commande_lignes (commande_id, ouvrage_id, quantite, prix_unitaire)
+         VALUES (?, ?, ?, ?)`,
         [
           idCommande,
-          Number(it.ouvrage_idOuvrage),
+          Number(it.ouvrage_id),
           Number(it.quantite),
           Number(it.prix_unitaire),
         ]
       );
+
       await conn.query(
-        `UPDATE ouvrages SET stock = GREATEST(0, stock - ?) WHERE idOuvrage = ?`,
-        [Number(it.quantite), Number(it.ouvrage_idOuvrage)]
+        `UPDATE ouvrages SET stock = GREATEST(0, stock - ?) WHERE id = ?`,
+        [Number(it.quantite), Number(it.ouvrage_id)]
       );
     }
 
     await conn.commit();
 
-    // renvoyer la commande complète
     const [[cmd]] = await pool.query(
-      `SELECT * FROM commandes WHERE idCommande=?`,
+      `SELECT * FROM commandes WHERE id = ?`,
       [idCommande]
     );
+
     const [cmdItems] = await pool.query(
-      `SELECT ci.idItem, ci.quantite, ci.prix_unitaire, o.idOuvrage, o.titre
-       FROM commandes_items ci
-       JOIN ouvrages o ON o.idOuvrage = ci.ouvrage_idOuvrage
-       WHERE ci.commande_idCommande=?`,
+      `SELECT cl.*, o.titre 
+       FROM commande_lignes cl
+       JOIN ouvrages o ON o.id = cl.ouvrage_id
+       WHERE commande_id = ?`,
       [idCommande]
     );
+
     res.status(201).json({ ...cmd, items: cmdItems });
   } catch (e) {
     await conn.rollback();
     console.error("CMD_CREATE_ERR:", e);
-    res
-      .status(500)
-      .json({ error: e.code || e.message || "Erreur création commande" });
+    res.status(500).json({ error: "Erreur création commande" });
   } finally {
     conn.release();
   }
 }
 
-/** PUT /api/commandes/:idCommande/statut  (body: { statut }) */
+/** PUT /api/commandes/:idCommande/status */
 export async function updateStatut(req, res) {
   try {
     const id = Number(req.params.idCommande);
-    const { statut } = req.body; // en_attente | payee | expediee | livree | annulee
-    if (!statut) return res.status(400).json({ error: "statut requis" });
+    const { statut } = req.body;
+
+    if (!statut)
+      return res.status(400).json({ error: "statut requis" });
 
     const [r] = await pool.query(
-      `UPDATE commandes SET statut=?, updated_at=NOW() WHERE idCommande=?`,
+      `UPDATE commandes SET statut=?, updated_at=NOW() WHERE id=?`,
       [statut, id]
     );
+
     if (r.affectedRows === 0)
       return res.status(404).json({ error: "Commande introuvable" });
+
     const [[cmd]] = await pool.query(
-      `SELECT * FROM commandes WHERE idCommande=?`,
+      `SELECT * FROM commandes WHERE id=?`,
       [id]
     );
+
     res.json(cmd);
   } catch (e) {
     console.error("CMD_UPDATE_STATUT_ERR:", e);
@@ -175,7 +198,9 @@ export async function updateStatut(req, res) {
 export async function remove(req, res) {
   try {
     const id = Number(req.params.idCommande);
-    await pool.query(`DELETE FROM commandes WHERE idCommande=?`, [id]);
+
+    await pool.query(`DELETE FROM commandes WHERE id=?`, [id]);
+
     res.status(204).end();
   } catch (e) {
     console.error("CMD_DELETE_ERR:", e);
