@@ -18,7 +18,7 @@ router.get(
   "/",
   /*requireAuth, allowRoles('gestionnaire','administrateur'),*/ list
 );
-router.get("/:idUser", /*requireAuth,*/ getOne);
+router.get("/:id", /*requireAuth,*/ getOne);
 router.post("/", /*requireAuth, allowRoles('administrateur'),*/ create);
 router.put(
   "/:idUser",
