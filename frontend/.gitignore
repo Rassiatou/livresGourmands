@@ -22,3 +22,14 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Node
+frontend/node_modules/
+frontend/dist/
+
+# Mac / Windows
+.DS_Store
+
+# Fichiers design lourds
+*.psd
+*.xd
