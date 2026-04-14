@@ -5,11 +5,13 @@ import {
   create,
   updateStatut,
   remove,
+  createCheckoutSession,
+  confirmPayment,
 } from "../controllers/commandes.controller.js";
-// Si tu veux protéger plus tard :
-// import { requireAuth, allowRoles } from "../middlewares/auth.js";
+import { requireAuth, allowRoles } from "../middlewares/auth.js";
 
 const router = Router();
+router.use(requireAuth);
 
 /**
  * GET /api/commandes
@@ -17,7 +19,6 @@ const router = Router();
  */
 router.get(
   "/",
-  // requireAuth,
   list
 );
 
@@ -27,7 +28,6 @@ router.get(
  */
 router.get(
   "/:idCommande",
-  // requireAuth,
   details
 );
 
@@ -47,8 +47,17 @@ router.get(
  */
 router.post(
   "/",
-  // requireAuth,
   create
+);
+
+router.post(
+  "/:idCommande/checkout-session",
+  createCheckoutSession
+);
+
+router.post(
+  "/:idCommande/confirm-payment",
+  confirmPayment
 );
 
 /**
@@ -57,8 +66,7 @@ router.post(
  */
 router.put(
   "/:idCommande/status",
-  // requireAuth,
-  // allowRoles("gestionnaire", "administrateur"),
+  allowRoles("gestionnaire", "administrateur"),
   updateStatut
 );
 
@@ -68,8 +76,7 @@ router.put(
  */
 router.delete(
   "/:idCommande",
-  // requireAuth,
-  // allowRoles("administrateur"),
+  allowRoles("administrateur"),
   remove
 );
 

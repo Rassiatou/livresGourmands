@@ -2,6 +2,37 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../api/axiosClient";
 import { useCart } from "../context/CartContext.jsx";
+import ProductGrid from "../components/ProductGrid.jsx";
+import { toCuisineCategoryLabel } from "../utils/cuisineCategories.js";
+import Loader from "../components/Loader.jsx";
+import ErrorMessage from "../components/ErrorMessage.jsx";
+
+const cuisineThemes = [
+  {
+    id: "patisserie",
+    title: "Pâtisserie Maison",
+    text: "Recettes gourmandes, techniques pas à pas et astuces de chef.",
+    emoji: "🍰",
+  },
+  {
+    id: "vege",
+    title: "Cuisine Végétarienne",
+    text: "Des plats équilibrés, colorés et faciles à cuisiner au quotidien.",
+    emoji: "🥗",
+  },
+  {
+    id: "monde",
+    title: "Saveurs du Monde",
+    text: "Voyage culinaire entre Méditerranée, Asie et Orient.",
+    emoji: "🌍",
+  },
+  {
+    id: "rapide",
+    title: "Cuisine Express",
+    text: "Des idées rapides pour bien manger même les soirs pressés.",
+    emoji: "⚡",
+  },
+];
 
 export default function HomePage() {
   const [ouvrages, setOuvrages] = useState([]);
@@ -14,27 +45,24 @@ export default function HomePage() {
   const navigate = useNavigate();
   const { addToCart } = useCart();
 
-  // ─────────────────────────────
-  // Charger les catégories
-  // ─────────────────────────────
   useEffect(() => {
     async function fetchCategories() {
       try {
         const res = await api.get("/categories", { params: { limit: 100 } });
 
-        console.log("API /categories =>", res.data);
-
         let items = [];
-
-        // 🔥 TON API renvoie un tableau direct :
-        // [ {id:1, nom:"..."}, {id:2, nom:"..."}, ... ]
         if (Array.isArray(res.data)) {
           items = res.data;
         }
 
-        setCategories(items);
-      } catch (err) {
-        console.error("Erreur /categories", err);
+        setCategories(
+          items.map((cat) => ({
+            ...cat,
+            id: Number(cat.id ?? cat.idCategorie),
+            nom: toCuisineCategoryLabel(cat.id ?? cat.idCategorie, cat.nom),
+          }))
+        );
+      } catch {
         setCategories([]);
       }
     }
@@ -42,9 +70,6 @@ export default function HomePage() {
     fetchCategories();
   }, []);
 
-  // ─────────────────────────────
-  // Charger les ouvrages
-  // ─────────────────────────────
   useEffect(() => {
     async function fetchOuvrages() {
       try {
@@ -57,19 +82,14 @@ export default function HomePage() {
 
         const res = await api.get("/ouvrages", { params });
 
-        console.log("API /ouvrages =>", res.data);
-
         let items = [];
-
-        // 🔥 TON API renvoie aussi un tableau direct
         if (Array.isArray(res.data)) {
           items = res.data;
         }
 
         setOuvrages(items);
-      } catch (err) {
-        console.error("Erreur /ouvrages", err);
-        setError("Impossible de charger les ouvrages.");
+      } catch {
+        setError("Impossible de charger les ouvrages pour le moment.");
         setOuvrages([]);
       } finally {
         setLoading(false);
@@ -79,29 +99,25 @@ export default function HomePage() {
     fetchOuvrages();
   }, [search, selectedCategory]);
 
-  // Aller à la page détail
   function handleDetails(id) {
     navigate(`/ouvrages/${id}`);
   }
 
-  // Ajouter au panier
   function handleAddToCart(ouvrage) {
     try {
       addToCart(ouvrage, 1);
-    } catch (err) {
-      console.error("Erreur addToCart", err);
-      alert("Impossible d'ajouter au panier.");
+    } catch {
+      alert("Impossible d'ajouter cet ouvrage au panier.");
     }
   }
 
   return (
     <div className="py-4">
-      <h1 className="display-4 fw-bold">Bienvenue sur LivresGourmands.net</h1>
+      <h1 className="display-5 fw-bold section-title">Bienvenue sur LivresGourmands</h1>
       <p className="lead text-muted">
-        Découvrez notre sélection de livres gourmands et ajoutez vos coups de cœur à votre panier.
+        Découvrez notre sélection de livres de cuisine et trouvez votre prochaine source d'inspiration.
       </p>
 
-      {/* Recherche */}
       <div className="mt-4 mb-3">
         <label className="form-label fw-semibold">Recherche par titre ou auteur</label>
         <input
@@ -113,7 +129,6 @@ export default function HomePage() {
         />
       </div>
 
-      {/* Catégories */}
       <div className="mb-4">
         <label className="form-label fw-semibold">Catégorie</label>
         <select
@@ -130,36 +145,38 @@ export default function HomePage() {
         </select>
       </div>
 
-      {/* Liste des ouvrages */}
-      <h2 className="h4 mb-3">Nos ouvrages</h2>
-
-      {error && <div className="alert alert-danger">{error}</div>}
-      {loading && <p>Chargement des ouvrages...</p>}
-      {!loading && ouvrages.length === 0 && !error && <p>Aucun ouvrage trouvé pour ces filtres.</p>}
-
-      <div className="row g-3">
-        {ouvrages.map((ouvrage) => (
-          <div key={ouvrage.id} className="col-md-3">
-            <div className="card h-100">
-              <div className="card-body d-flex flex-column">
-                <h5 className="card-title">{ouvrage.titre}</h5>
-                <h6 className="card-subtitle mb-2 text-muted">{ouvrage.auteur}</h6>
-                <p className="fw-bold mb-1">{parseFloat(ouvrage.prix).toFixed(2)} $</p>
-                <p className="card-text flex-grow-1 text-truncate">{ouvrage.description}</p>
-
-                <div className="d-flex gap-2 mt-3">
-                  <button className="btn btn-outline-secondary btn-sm" onClick={() => handleDetails(ouvrage.id)}>
-                    Détails
-                  </button>
-                  <button className="btn btn-primary btn-sm" onClick={() => handleAddToCart(ouvrage)}>
-                    Ajouter
-                  </button>
-                </div>
+      <h2 className="h4 mb-3">Inspirations cuisine</h2>
+      <div className="row g-3 mb-4">
+        {cuisineThemes.map((theme) => (
+          <div key={theme.id} className="col-12 col-sm-6 col-lg-3">
+            <article className="card cuisine-theme-card h-100 border-0 shadow-sm">
+              <div className="card-body">
+                <div className="fs-4 mb-2" aria-hidden="true">{theme.emoji}</div>
+                <h3 className="h6 mb-2">{theme.title}</h3>
+                <p className="text-muted small mb-0">{theme.text}</p>
               </div>
-            </div>
+            </article>
           </div>
         ))}
       </div>
+
+      <h2 className="h4 mb-3">Nos ouvrages</h2>
+
+      {error && <ErrorMessage message={error} />}
+      {loading && <Loader />}
+      {!loading && ouvrages.length === 0 && !error && (
+        <div className="empty-state text-center text-muted">
+          Aucun ouvrage ne correspond à votre recherche pour le moment.
+        </div>
+      )}
+
+      {!loading && ouvrages.length > 0 && (
+        <ProductGrid
+          ouvrages={ouvrages}
+          onAddToCart={handleAddToCart}
+          onViewDetails={handleDetails}
+        />
+      )}
     </div>
   );
 }

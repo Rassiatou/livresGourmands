@@ -7,11 +7,11 @@ export async function list(req, res) {
     const params = [];
     let sql = `
       SELECT a.idAvis, a.note, a.commentaire, a.date_avis,
-             u.idUser   AS client_idUser, u.nom AS client_nom,
-             o.idOuvrage AS ouvrage_idOuvrage, o.titre AS ouvrage_titre
+             u.id AS client_idUser, u.nom AS client_nom,
+             o.id AS ouvrage_idOuvrage, o.titre AS ouvrage_titre
       FROM avis a
-      JOIN users u    ON u.idUser = a.client_idUser
-      JOIN ouvrages o ON o.idOuvrage = a.ouvrage_idOuvrage
+      JOIN users u    ON u.id = a.client_idUser
+      JOIN ouvrages o ON o.id = a.ouvrage_idOuvrage
       WHERE 1=1
     `;
     if (ouvrageId) {
@@ -35,16 +35,21 @@ export async function list(req, res) {
 export async function create(req, res) {
   try {
     const { client_idUser, ouvrage_idOuvrage, note, commentaire } = req.body;
-    if (!client_idUser || !ouvrage_idOuvrage || !note)
+    const role = req.user?.role;
+    const isManager = role === "gestionnaire" || role === "administrateur";
+    const resolvedClientId = isManager
+      ? Number(client_idUser || req.user.id)
+      : Number(req.user.id);
+    if (!resolvedClientId || !ouvrage_idOuvrage || !note)
       return res
         .status(400)
-        .json({ error: "client_idUser, ouvrage_idOuvrage, note requis" });
+        .json({ error: "Utilisateur, ouvrage_idOuvrage, note requis" });
 
     await pool.query(
       `INSERT INTO avis(client_idUser, ouvrage_idOuvrage, note, commentaire)
        VALUES (?,?,?,?)`,
       [
-        Number(client_idUser),
+        resolvedClientId,
         Number(ouvrage_idOuvrage),
         Number(note),
         commentaire ?? null,
@@ -66,6 +71,15 @@ export async function create(req, res) {
 export async function remove(req, res) {
   try {
     const { idAvis } = req.params;
+    const [rows] = await pool.query("SELECT client_idUser FROM avis WHERE idAvis=?", [
+      Number(idAvis),
+    ]);
+    if (!rows.length) return res.status(404).json({ error: "Avis introuvable" });
+    const role = req.user?.role;
+    const isManager = role === "gestionnaire" || role === "administrateur";
+    if (!isManager && Number(rows[0].client_idUser) !== Number(req.user.id)) {
+      return res.status(403).json({ error: "Accès refusé" });
+    }
     await pool.query("DELETE FROM avis WHERE idAvis=?", [Number(idAvis)]);
     res.status(204).end();
   } catch (e) {

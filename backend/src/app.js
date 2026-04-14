@@ -63,6 +63,7 @@ app.use("/api/commandes", commandesRoutes);
 app.use("/api/commandes/:idCommande", commandesItemsRoutes);
 
 // Listes cadeaux
+app.use("/api/listes", listesRoutes);
 app.use("/api/liste", listesRoutes);
 
 // --- 404 ---

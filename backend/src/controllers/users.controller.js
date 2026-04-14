@@ -21,14 +21,14 @@ export async function list(req, res) {
     }
     sql += " ORDER BY created_at DESC";
     const [rows] = await pool.query(sql, params);
-    res.json(rows);
+    res.json(rows.map((u) => ({ ...u, idUser: u.id })));
   } catch (e) {
     console.error("USERS_LIST_ERR:", e);
     res.status(500).json({ error: "Erreur liste utilisateurs" });
   }
 }
 
-/** GET /api/users/:Id */
+/** GET /api/users/:id */
 export async function getOne(req, res) {
   try {
     const id = Number(req.params.id);
@@ -38,7 +38,7 @@ export async function getOne(req, res) {
     );
     if (!rows.length)
       return res.status(404).json({ error: "Utilisateur introuvable" });
-    res.json(rows[0]);
+    res.json({ ...rows[0], idUser: rows[0].id });
   } catch (e) {
     console.error("USERS_GET_ERR:", e);
     res.status(500).json({ error: "Erreur récupération utilisateur" });
@@ -69,7 +69,7 @@ export async function create(req, res) {
 
     return res.status(201).json({
       message: "Utilisateur créé avec succès",
-      user: { id: r.insertId, nom, email, role }
+      user: { id: r.insertId, idUser: r.insertId, nom, email, role }
     });
   } catch (e) {
     console.error("USERS_CREATE_ERR:", e);
@@ -78,7 +78,7 @@ export async function create(req, res) {
 }
 
 
-/** PUT /api/users/:Id  (mettre à jour nom/role/actif) */
+/** PUT /api/users/:id  (mettre à jour nom/role/actif) */
 export async function update(req, res) {
   try {
     const id = Number(req.params.id);
@@ -89,27 +89,27 @@ export async function update(req, res) {
            role = COALESCE(?, role),
            actif = COALESCE(?, actif),
            updated_at = NOW()
-       WHERE Id=?`,
+       WHERE id=?`,
       [nom ?? null, role ?? null, actif != null ? Number(actif) : null, id]
     );
     const [rows] = await pool.query(
-      `SELECT Id, nom, email, role, actif, created_at, updated_at FROM users WHERE Id=?`,
+      `SELECT id, nom, email, role, actif, created_at, updated_at FROM users WHERE id=?`,
       [id]
     );
     if (!rows.length)
       return res.status(404).json({ error: "Utilisateur introuvable" });
-    res.json(rows[0]);
+    res.json({ ...rows[0], idUser: rows[0].id });
   } catch (e) {
     console.error("USERS_UPDATE_ERR:", e);
     res.status(500).json({ error: "Erreur mise à jour utilisateur" });
   }
 }
 
-/** DELETE /api/users/:Id */
+/** DELETE /api/users/:id */
 export async function remove(req, res) {
   try {
-    const id = Number(req.params.Id);
-    await pool.query(`DELETE FROM users WHERE Id=?`, [id]);
+    const id = Number(req.params.id);
+    await pool.query(`DELETE FROM users WHERE id=?`, [id]);
     res.status(204).end();
   } catch (e) {
     console.error("USERS_DELETE_ERR:", e);

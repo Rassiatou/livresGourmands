@@ -1,8 +1,4 @@
-import axios from "axios";
-
-const api = axios.create({
-  baseURL: "http://localhost:3001/api", // ton backend Node
-});
+import api from "../api/axiosClient";
 
 // GET /api/ouvrages
 export const fetchOuvrages = async () => {

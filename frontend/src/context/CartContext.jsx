@@ -24,16 +24,27 @@ export const CartProvider = ({ children }) => {
 
   // Ajouter un ouvrage au panier
   const addToCart = (ouvrage, quantity = 1) => {
+    const ouvrageId = ouvrage.id ?? ouvrage.idOuvrage;
+    const normalizedQty = Number(quantity) > 0 ? Number(quantity) : 1;
+    const maxStock =
+      ouvrage.stock != null && Number(ouvrage.stock) >= 0
+        ? Number(ouvrage.stock)
+        : null;
+
     setItems((prev) => {
-      const existing = prev.find((p) => p.id === ouvrage.id);
+      const existing = prev.find((p) => p.id === ouvrageId);
       if (existing) {
+        const nextQty = existing.quantity + normalizedQty;
+        const safeQty = maxStock != null ? Math.min(nextQty, maxStock) : nextQty;
         return prev.map((p) =>
-          p.id === ouvrage.id
-            ? { ...p, quantity: p.quantity + quantity }
+          p.id === ouvrageId
+            ? { ...p, quantity: safeQty }
             : p
         );
       }
-      return [...prev, { ...ouvrage, quantity }];
+      const safeInitialQty =
+        maxStock != null ? Math.min(normalizedQty, maxStock) : normalizedQty;
+      return [...prev, { ...ouvrage, id: ouvrageId, quantity: safeInitialQty }];
     });
   };
 
@@ -44,15 +55,36 @@ export const CartProvider = ({ children }) => {
 
   // Modifier la quantité
   const updateQuantity = (id, quantity) => {
-    if (quantity <= 0) {
+    const nextQty = Number(quantity);
+    if (!Number.isFinite(nextQty) || nextQty <= 0) {
       removeFromCart(id);
       return;
     }
     setItems((prev) =>
       prev.map((item) =>
-        item.id === id ? { ...item, quantity } : item
+        item.id === id
+          ? {
+              ...item,
+              quantity:
+                item.stock != null && Number(item.stock) >= 0
+                  ? Math.min(nextQty, Number(item.stock))
+                  : nextQty,
+            }
+          : item
       )
     );
+  };
+
+  const incrementQuantity = (id) => {
+    const current = items.find((item) => item.id === id);
+    if (!current) return;
+    updateQuantity(id, current.quantity + 1);
+  };
+
+  const decrementQuantity = (id) => {
+    const current = items.find((item) => item.id === id);
+    if (!current) return;
+    updateQuantity(id, current.quantity - 1);
   };
 
   // Vider le panier
@@ -74,6 +106,8 @@ export const CartProvider = ({ children }) => {
         addToCart,
         removeFromCart,
         updateQuantity,
+        incrementQuantity,
+        decrementQuantity,
         clearCart,
         cartCount,
         cartTotal,
@@ -84,4 +118,5 @@ export const CartProvider = ({ children }) => {
   );
 };
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const useCart = () => useContext(CartContext);

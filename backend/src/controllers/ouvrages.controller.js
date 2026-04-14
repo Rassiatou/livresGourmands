@@ -8,18 +8,20 @@ export async function list(req, res) {
 
     let sql = `
       SELECT 
-        o.id AS id,
+        o.idOuvrage AS id,
+        o.idOuvrage AS idOuvrage,
         o.titre,
         o.auteur,
         o.description,
+        o.image_url,
         o.prix,
         o.stock,
-        o.categorie_id AS categorie_id,
+        o.categorie_idCategorie AS categorie_id,
         c.nom AS categorie_nom,
         o.created_at,
         o.updated_at
       FROM ouvrages o
-      LEFT JOIN categories c ON c.id = o.categorie_id
+      LEFT JOIN categories c ON c.idCategorie = o.categorie_idCategorie
       WHERE 1=1
     `;
 
@@ -32,7 +34,7 @@ export async function list(req, res) {
     }
 
     if (categorie) {
-      sql += " AND o.categorie_id = ?";
+      sql += " AND o.categorie_idCategorie = ?";
       params.push(Number(categorie));
     }
 
@@ -51,38 +53,39 @@ export async function list(req, res) {
 
 export async function details(req, res) {
   const { id } = req.params;
-  const [rows] = await pool.query("SELECT * FROM ouvrages WHERE id=?", [id]);
+  const [rows] = await pool.query("SELECT * FROM ouvrages WHERE idOuvrage=?", [id]);
   if (!rows.length)
     return res.status(404).json({ error: "Ouvrage introuvable" });
-  res.json(rows[0]);
+  res.json({ ...rows[0], id: rows[0].idOuvrage, idOuvrage: rows[0].idOuvrage });
 }
 
 export async function create(req, res) {
   try {
-    const { titre, auteur, isbn, description, prix, stock, categorie_id } =
-      req.body;
-    if (!titre || !auteur || !isbn || categorie_id == null) {
+    const { titre, auteur, description, image_url, prix, stock, categorie_id } = req.body;
+    if (!titre || !auteur || categorie_id == null) {
       return res
         .status(400)
-        .json({ error: "titre, auteur, isbn, categorie_id requis" });
+        .json({ error: "titre, auteur, categorie_id requis" });
     }
     const [r] = await pool.query(
-      `INSERT INTO ouvrages(titre,auteur,isbn,description,prix,stock,categorie_id)
+      `INSERT INTO ouvrages(titre,auteur,description,image_url,prix,stock,categorie_idCategorie)
        VALUES(?,?,?,?,?,?,?)`,
       [
         titre,
         auteur,
-        isbn,
         description ?? null,
+        image_url ?? null,
         Number(prix) || 0,
         Number(stock) || 0,
         Number(categorie_id),
       ]
     );
-    const [row] = await pool.query("SELECT * FROM ouvrages WHERE id=?", [
+    const [row] = await pool.query("SELECT * FROM ouvrages WHERE idOuvrage=?", [
       r.insertId,
     ]);
-    res.status(201).json(row[0]);
+    res
+      .status(201)
+      .json({ ...row[0], id: row[0].idOuvrage, idOuvrage: row[0].idOuvrage });
   } catch (e) {
     res.status(500).json({ error: "Erreur création ouvrage" });
   }
@@ -91,30 +94,34 @@ export async function create(req, res) {
 export async function update(req, res) {
   try {
     const { id } = req.params;
-    const { titre, auteur, isbn, description, prix, stock, categorie_id } =
-      req.body;
-    const [exists] = await pool.query("SELECT id FROM ouvrages WHERE id=?", [
-      id,
-    ]);
+    const { titre, auteur, description, image_url, prix, stock, categorie_id } = req.body;
+    const [exists] = await pool.query(
+      "SELECT idOuvrage FROM ouvrages WHERE idOuvrage=?",
+      [
+        id,
+      ]
+    );
     if (!exists.length)
       return res.status(404).json({ error: "Ouvrage introuvable" });
 
     await pool.query(
-      `UPDATE ouvrages SET titre=?, auteur=?, isbn=?, description=?, prix=?, stock=?, categorie_id=?, updated_at=NOW()
-       WHERE id=?`,
+      `UPDATE ouvrages SET titre=?, auteur=?, description=?, image_url=?, prix=?, stock=?, categorie_idCategorie=?, updated_at=NOW()
+       WHERE idOuvrage=?`,
       [
         titre,
         auteur,
-        isbn,
         description ?? null,
+        image_url ?? null,
         Number(prix) || 0,
         Number(stock) || 0,
         Number(categorie_id),
         id,
       ]
     );
-    const [row] = await pool.query("SELECT * FROM ouvrages WHERE id=?", [id]);
-    res.json(row[0]);
+    const [row] = await pool.query("SELECT * FROM ouvrages WHERE idOuvrage=?", [
+      id,
+    ]);
+    res.json({ ...row[0], id: row[0].idOuvrage, idOuvrage: row[0].idOuvrage });
   } catch (e) {
     res.status(500).json({ error: "Erreur mise à jour ouvrage" });
   }
@@ -123,7 +130,7 @@ export async function update(req, res) {
 export async function remove(req, res) {
   try {
     const { id } = req.params;
-    await pool.query("DELETE FROM ouvrages WHERE id=?", [id]);
+    await pool.query("DELETE FROM ouvrages WHERE idOuvrage=?", [id]);
     res.status(204).end();
   } catch (e) {
     res.status(500).json({ error: "Erreur suppression ouvrage" });

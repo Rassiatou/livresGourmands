@@ -9,12 +9,11 @@ import {
   addItem,
   removeItem,
 } from "../controllers/listes.controller.js";
-// Si tu veux protéger avec JWT :
-// import { requireAuth } from "../middlewares/auth.js";
+import { requireAuth } from "../middlewares/auth.js";
 
 const router = Router();
 
-// router.use(requireAuth); // dé-commente si tu veux exiger un token
+router.use(requireAuth);
 
 router.get("/", list); // GET /api/listes?proprietaireId=&code=
 router.get("/:idListe", getOne); // GET /api/listes/1

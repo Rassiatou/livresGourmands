@@ -1,8 +1,13 @@
 import { Link, NavLink } from "react-router-dom";
 import { useCart } from "../context/CartContext";
+import { useAuth } from "../context/AuthContext.jsx";
 
 export default function Navbar() {
   const { cartCount } = useCart();
+  const { user, isAuthenticated, logout } = useAuth();
+  const displayName = user?.nom || user?.email || "Mon compte";
+  const roleLabel = user?.role || "client";
+  const initial = displayName?.trim()?.charAt(0)?.toUpperCase() || "C";
 
   return (
     <nav className="navbar navbar-expand-lg navbar-dark bg-dark">
@@ -44,7 +49,7 @@ export default function Navbar() {
           </ul>
 
           {/* Menu droit */}
-          <div className="d-flex gap-2">
+          <div className="d-flex gap-2 align-items-center">
             <Link to="/panier" className="btn btn-outline-warning">
               Panier{" "}
               <span className="badge bg-warning text-dark ms-1">
@@ -52,9 +57,28 @@ export default function Navbar() {
               </span>
             </Link>
 
-            <Link to="/login" className="btn btn-outline-light">
-              Connexion
-            </Link>
+            {!isAuthenticated ? (
+              <Link to="/login" className="btn btn-outline-light">
+                Connexion
+              </Link>
+            ) : (
+              <div className="account-chip">
+                <div className="account-avatar">{initial}</div>
+                <div className="account-meta">
+                  <div className="account-name" title={displayName}>
+                    {displayName}
+                  </div>
+                  <div className="account-role">Compte {roleLabel}</div>
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-light account-logout-btn"
+                  onClick={logout}
+                >
+                  Deconnexion
+                </button>
+              </div>
+            )}
           </div>
 
         </div>

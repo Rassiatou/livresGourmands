@@ -5,7 +5,13 @@ import { pool } from "../db.js";
 export async function listItems(req, res) {
   try {
     const panierId = req.query.panierId ? Number(req.query.panierId) : null;
-    const clientId = req.query.clientId ? Number(req.query.clientId) : null;
+    const role = req.user?.role;
+    const isManager = role === "gestionnaire" || role === "administrateur";
+    const clientId = isManager
+      ? req.query.clientId
+        ? Number(req.query.clientId)
+        : null
+      : Number(req.user.id);
 
     let idPanier = panierId;
 
@@ -35,7 +41,12 @@ export async function listItems(req, res) {
       [idPanier]
     );
 
-    res.json(items);
+    res.json(
+      items.map((it) => ({
+        ...it,
+        idOuvrage: it.idOuvrage,
+      }))
+    );
   } catch (e) {
     console.error("PANIER_ITEMS_LIST_ERR:", e);
     res.status(500).json({ error: "Erreur items panier" });
@@ -66,7 +77,11 @@ async function getOrCreatePanier(clientId) {
 // GET /api/panier?clientId=3  (retourne panier + items)
 export async function getPanier(req, res) {
   try {
-    const clientId = Number(req.query.clientId || req.user?.id);
+    const role = req.user?.role;
+    const isManager = role === "gestionnaire" || role === "administrateur";
+    const clientId = Number(
+      isManager ? req.query.clientId || req.user?.id : req.user?.id
+    );
     if (!clientId) {
       return res.status(400).json({ error: "clientId requis" });
     }
@@ -86,7 +101,12 @@ export async function getPanier(req, res) {
       [panier.idPanier]
     );
 
-    res.json({ ...panier, items });
+    res.json({
+      ...panier,
+      idPanier: panier.idPanier,
+      idUser: panier.client_idUser,
+      items: items.map((it) => ({ ...it, idOuvrage: it.idOuvrage })),
+    });
   } catch (e) {
     console.error("PANIER_GET_ERR:", e);
     res.status(500).json({ error: "Erreur récupération panier" });
@@ -102,14 +122,19 @@ export async function addItem(req, res) {
       quantite = 1,
       prix_unitaire,
     } = req.body;
+    const role = req.user?.role;
+    const isManager = role === "gestionnaire" || role === "administrateur";
+    const resolvedClientId = isManager
+      ? Number(client_idUser || req.user.id)
+      : Number(req.user.id);
 
-    if (!client_idUser || !ouvrage_idOuvrage) {
+    if (!resolvedClientId || !ouvrage_idOuvrage) {
       return res
         .status(400)
-        .json({ error: "client_idUser et ouvrage_idOuvrage requis" });
+        .json({ error: "Utilisateur et ouvrage_idOuvrage requis" });
     }
 
-    const panier = await getOrCreatePanier(Number(client_idUser));
+    const panier = await getOrCreatePanier(resolvedClientId);
 
     // prix automatique si non fourni (prend le prix de l’ouvrage)
     let pu = prix_unitaire;
@@ -167,7 +192,12 @@ export async function addItem(req, res) {
       [panier.idPanier]
     );
 
-    res.status(201).json({ ...panier, items });
+    res.status(201).json({
+      ...panier,
+      idPanier: panier.idPanier,
+      idUser: panier.client_idUser,
+      items: items.map((it) => ({ ...it, idOuvrage: it.idOuvrage })),
+    });
   } catch (e) {
     console.error("PANIER_ADD_ERR:", e);
     res.status(500).json({ error: "Erreur ajout item" });

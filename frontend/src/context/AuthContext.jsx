@@ -1,4 +1,4 @@
-import { createContext, useState, useEffect, useContext } from "react";
+import { createContext, useState, useEffect, useContext, useCallback } from "react";
 import api from "../api/axiosClient";
 
 // Création du contexte
@@ -7,7 +7,16 @@ const AuthContext = createContext();
 // Provider
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
-  const [token, setToken] = useState(() => localStorage.getItem("access_token") || null);
+  const [token, setToken] = useState(
+    () => localStorage.getItem("token") || localStorage.getItem("access_token") || null
+  );
+
+  const logout = useCallback(() => {
+    localStorage.removeItem("token");
+    localStorage.removeItem("access_token");
+    setToken(null);
+    setUser(null);
+  }, []);
 
   // Charger le profil si token existe
   useEffect(() => {
@@ -16,7 +25,7 @@ export function AuthProvider({ children }) {
 
       try {
         const res = await api.get("/auth/me");
-        setUser(res.data.utilisateur);
+        setUser(res.data);
       } catch (err) {
         console.error("Erreur /auth/me", err);
         logout();
@@ -24,21 +33,17 @@ export function AuthProvider({ children }) {
     }
 
     fetchMe();
-  }, [token]);
+  }, [token, logout]);
 
   async function login(email, password) {
     const res = await api.post("/auth/login", { email, password });
 
-    const accessToken = res.data.access_token;
-    localStorage.setItem("access_token", accessToken);
-    setToken(accessToken);
-    setUser(res.data.utilisateur);
-  }
-
-  function logout() {
-    localStorage.removeItem("access_token");
-    setToken(null);
-    setUser(null);
+    const receivedToken = res.data.token || res.data.access_token;
+    const receivedUser = res.data.user || res.data.utilisateur;
+    localStorage.setItem("token", receivedToken);
+    localStorage.setItem("access_token", receivedToken);
+    setToken(receivedToken);
+    setUser(receivedUser);
   }
 
   return (
@@ -55,6 +60,7 @@ export function AuthProvider({ children }) {
 }
 
 // Hook personnalisé
+// eslint-disable-next-line react-refresh/only-export-components
 export function useAuth() {
   return useContext(AuthContext);
 }

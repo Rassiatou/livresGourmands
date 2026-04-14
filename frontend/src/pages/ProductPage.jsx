@@ -48,6 +48,8 @@ function ProductPage() {
               src={ouvrage.image_url}
               alt={ouvrage.titre}
               className="img-fluid rounded"
+              loading="lazy"
+              decoding="async"
             />
           )}
         </div>

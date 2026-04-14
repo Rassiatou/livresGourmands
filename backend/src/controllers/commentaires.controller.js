@@ -7,13 +7,13 @@ export async function list(req, res) {
     const params = [];
     let sql = `
       SELECT cm.idCommentaire, cm.contenu, cm.valide, cm.date_soumission, cm.date_validation,
-             u.idUser AS client_idUser, u.nom AS client_nom,
-             o.idOuvrage AS ouvrage_idOuvrage, o.titre AS ouvrage_titre,
-             v.idUser AS valide_par_idUser
+             u.id AS client_idUser, u.nom AS client_nom,
+             o.id AS ouvrage_idOuvrage, o.titre AS ouvrage_titre,
+             v.id AS valide_par_idUser
       FROM commentaires cm
-      JOIN users u ON u.idUser = cm.client_idUser
-      JOIN ouvrages o ON o.idOuvrage = cm.ouvrage_idOuvrage
-      LEFT JOIN users v ON v.idUser = cm.valide_par_idUser
+      JOIN users u ON u.id = cm.client_idUser
+      JOIN ouvrages o ON o.id = cm.ouvrage_idOuvrage
+      LEFT JOIN users v ON v.id = cm.valide_par_idUser
       WHERE 1=1
     `;
     if (ouvrageId) { sql += " AND cm.ouvrage_idOuvrage=?"; params.push(Number(ouvrageId)); }
@@ -33,13 +33,18 @@ export async function list(req, res) {
 export async function create(req, res) {
   try {
     const { client_idUser, ouvrage_idOuvrage, contenu } = req.body;
-    if (!client_idUser || !ouvrage_idOuvrage || !contenu?.trim()) {
-      return res.status(400).json({ error: "client_idUser, ouvrage_idOuvrage, contenu requis" });
+    const role = req.user?.role;
+    const isManager = role === "gestionnaire" || role === "administrateur";
+    const resolvedClientId = isManager
+      ? Number(client_idUser || req.user.id)
+      : Number(req.user.id);
+    if (!resolvedClientId || !ouvrage_idOuvrage || !contenu?.trim()) {
+      return res.status(400).json({ error: "Utilisateur, ouvrage_idOuvrage, contenu requis" });
     }
     const [r] = await pool.query(
       `INSERT INTO commentaires (client_idUser, ouvrage_idOuvrage, contenu, valide)
        VALUES (?,?,?,0)`,
-      [Number(client_idUser), Number(ouvrage_idOuvrage), contenu.trim()]
+      [resolvedClientId, Number(ouvrage_idOuvrage), contenu.trim()]
     );
     const [row] = await pool.query(`SELECT * FROM commentaires WHERE idCommentaire=?`, [r.insertId]);
     res.status(201).json(row[0]);
@@ -54,6 +59,7 @@ export async function setValidation(req, res) {
   try {
     const id = Number(req.params.idCommentaire);
     const { valide, valide_par_idUser } = req.body;
+    const resolvedValidatorId = Number(valide_par_idUser || req.user.id);
     if (valide == null) return res.status(400).json({ error: "valide requis (0 ou 1)" });
 
     await pool.query(
@@ -61,7 +67,7 @@ export async function setValidation(req, res) {
        SET valide=?, date_validation = IF(?=1, NOW(), NULL),
            valide_par_idUser = IF(?=1, ?, NULL)
        WHERE idCommentaire=?`,
-      [Number(valide), Number(valide), Number(valide), valide_par_idUser ?? null, id]
+      [Number(valide), Number(valide), Number(valide), resolvedValidatorId, id]
     );
     const [row] = await pool.query(`SELECT * FROM commentaires WHERE idCommentaire=?`, [id]);
     if (!row.length) return res.status(404).json({ error: "Commentaire introuvable" });
@@ -75,7 +81,18 @@ export async function setValidation(req, res) {
 // DELETE /api/commentaires/:idCommentaire
 export async function remove(req, res) {
   try {
-    await pool.query(`DELETE FROM commentaires WHERE idCommentaire=?`, [Number(req.params.idCommentaire)]);
+    const idCommentaire = Number(req.params.idCommentaire);
+    const [rows] = await pool.query(
+      "SELECT client_idUser FROM commentaires WHERE idCommentaire=?",
+      [idCommentaire]
+    );
+    if (!rows.length) return res.status(404).json({ error: "Commentaire introuvable" });
+    const role = req.user?.role;
+    const isManager = role === "gestionnaire" || role === "administrateur";
+    if (!isManager && Number(rows[0].client_idUser) !== Number(req.user.id)) {
+      return res.status(403).json({ error: "Accès refusé" });
+    }
+    await pool.query(`DELETE FROM commentaires WHERE idCommentaire=?`, [idCommentaire]);
     res.status(204).end();
   } catch (e) {
     console.error("COMMENTS_DELETE_ERR:", e);

@@ -1,4 +1,11 @@
 import { pool } from "../db.js";
+import Stripe from "stripe";
+
+function getStripeClient() {
+  const key = process.env.STRIPE_SECRET_KEY?.trim();
+  if (!key) return null;
+  return new Stripe(key);
+}
 export async function list(req, res) {
   try {
     const { userId } = req.query;
@@ -6,33 +13,45 @@ export async function list(req, res) {
 
     let sql = `
       SELECT 
-        c.id,
-        c.user_id,
+        c.idCommande AS id,
+        c.idCommande AS idCommande,
+        c.user_idUser AS user_id,
         c.date_commande,
         c.statut,
         c.total,
         c.mode_paiement,
-        c.payment_provider_id AS reference_paiement,
         c.adresse_livraison,
         c.mode_livraison,
         c.created_at,
         c.updated_at,
+        u.idUser AS idUser,
         u.nom AS user_nom,
         u.email AS user_email
       FROM commandes c
-      LEFT JOIN users u ON u.id = c.user_id
+      LEFT JOIN users u ON u.idUser = c.user_idUser
       WHERE 1=1
     `;
 
-    if (userId) {
-      sql += " AND c.user_id = ?";
+    const role = req.user?.role;
+    const isManager = role === "gestionnaire" || role === "administrateur";
+    if (!isManager) {
+      sql += " AND c.user_idUser = ?";
+      params.push(Number(req.user.id));
+    } else if (userId) {
+      sql += " AND c.user_idUser = ?";
       params.push(Number(userId));
     }
 
     sql += " ORDER BY c.date_commande DESC";
 
     const [rows] = await pool.query(sql, params);
-    res.json(rows);
+    res.json(
+      rows.map((row) => ({
+        ...row,
+        idCommande: row.idCommande ?? row.id,
+        idUser: row.idUser ?? row.user_id,
+      }))
+    );
   } catch (e) {
     console.error("CMD_LIST_ERR:", e);
     res
@@ -47,25 +66,35 @@ export async function details(req, res) {
     const id = Number(req.params.idCommande);
 
     const [[cmd]] = await pool.query(
-      `SELECT * FROM commandes WHERE id = ?`,
+      `SELECT * FROM commandes WHERE idCommande = ?`,
       [id]
     );
 
     if (!cmd) return res.status(404).json({ error: "Commande introuvable" });
+    const role = req.user?.role;
+    const isManager = role === "gestionnaire" || role === "administrateur";
+    if (!isManager && Number(cmd.user_idUser) !== Number(req.user?.id)) {
+      return res.status(403).json({ error: "Accès refusé" });
+    }
 
     const [items] = await pool.query(
       `SELECT 
-         cl.ouvrage_id,
+         cl.ouvrage_idOuvrage AS ouvrage_id,
          cl.quantite,
          cl.prix_unitaire,
          o.titre
-       FROM commande_lignes cl
-       JOIN ouvrages o ON o.id = cl.ouvrage_id
-       WHERE cl.commande_id = ?`,
+       FROM commandes_items cl
+       JOIN ouvrages o ON o.idOuvrage = cl.ouvrage_idOuvrage
+       WHERE cl.commande_idCommande = ?`,
       [id]
     );
 
-    res.json({ ...cmd, items });
+    res.json({
+      ...cmd,
+      idCommande: cmd.idCommande,
+      idUser: cmd.user_idUser,
+      items: items.map((it) => ({ ...it, idOuvrage: it.ouvrage_id })),
+    });
   } catch (e) {
     console.error("CMD_DETAILS_ERR:", e);
     res.status(500).json({ error: "Erreur détails commande" });
@@ -89,16 +118,16 @@ export async function details(req, res) {
 export async function create(req, res) {
   const conn = await pool.getConnection();
   try {
-    const {
-      user_id,
-      adresse_livraison,
-      mode_livraison,
-      mode_paiement,
-      items,
-    } = req.body;
+    const { user_id, adresse_livraison, mode_livraison, mode_paiement, items } =
+      req.body;
+    const role = req.user?.role;
+    const isManager = role === "gestionnaire" || role === "administrateur";
+    const resolvedUserId = isManager
+      ? Number(user_id || req.user.id)
+      : Number(req.user.id);
 
-    if (!user_id || !Array.isArray(items) || items.length === 0) {
-      return res.status(400).json({ error: "user_id et items requis" });
+    if (!resolvedUserId || !Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ error: "Utilisateur et items requis" });
     }
 
     const total = items.reduce(
@@ -109,10 +138,10 @@ export async function create(req, res) {
     await conn.beginTransaction();
 
     const [r] = await conn.query(
-      `INSERT INTO commandes (user_id, total, statut, adresse_livraison, mode_livraison, mode_paiement)
+      `INSERT INTO commandes (user_idUser, total, statut, adresse_livraison, mode_livraison, mode_paiement)
        VALUES (?, ?, 'en_attente', ?, ?, ?)`,
       [
-        Number(user_id),
+        resolvedUserId,
         total,
         adresse_livraison ?? null,
         mode_livraison ?? null,
@@ -124,7 +153,7 @@ export async function create(req, res) {
 
     for (const it of items) {
       await conn.query(
-        `INSERT INTO commande_lignes (commande_id, ouvrage_id, quantite, prix_unitaire)
+        `INSERT INTO commandes_items (commande_idCommande, ouvrage_idOuvrage, quantite, prix_unitaire)
          VALUES (?, ?, ?, ?)`,
         [
           idCommande,
@@ -135,7 +164,7 @@ export async function create(req, res) {
       );
 
       await conn.query(
-        `UPDATE ouvrages SET stock = GREATEST(0, stock - ?) WHERE id = ?`,
+        `UPDATE ouvrages SET stock = GREATEST(0, stock - ?) WHERE idOuvrage = ?`,
         [Number(it.quantite), Number(it.ouvrage_id)]
       );
     }
@@ -143,19 +172,28 @@ export async function create(req, res) {
     await conn.commit();
 
     const [[cmd]] = await pool.query(
-      `SELECT * FROM commandes WHERE id = ?`,
+      `SELECT * FROM commandes WHERE idCommande = ?`,
       [idCommande]
     );
 
     const [cmdItems] = await pool.query(
-      `SELECT cl.*, o.titre 
-       FROM commande_lignes cl
-       JOIN ouvrages o ON o.id = cl.ouvrage_id
-       WHERE commande_id = ?`,
+      `SELECT cl.idItem, cl.commande_idCommande, cl.ouvrage_idOuvrage, cl.quantite, cl.prix_unitaire, o.titre
+       FROM commandes_items cl
+       JOIN ouvrages o ON o.idOuvrage = cl.ouvrage_idOuvrage
+       WHERE commande_idCommande = ?`,
       [idCommande]
     );
 
-    res.status(201).json({ ...cmd, items: cmdItems });
+    res.status(201).json({
+      ...cmd,
+      idCommande: cmd.idCommande,
+      idUser: cmd.user_idUser,
+      items: cmdItems.map((it) => ({
+        ...it,
+        ouvrage_id: it.ouvrage_idOuvrage,
+        idOuvrage: it.ouvrage_idOuvrage,
+      })),
+    });
   } catch (e) {
     await conn.rollback();
     console.error("CMD_CREATE_ERR:", e);
@@ -175,7 +213,7 @@ export async function updateStatut(req, res) {
       return res.status(400).json({ error: "statut requis" });
 
     const [r] = await pool.query(
-      `UPDATE commandes SET statut=?, updated_at=NOW() WHERE id=?`,
+      `UPDATE commandes SET statut=?, updated_at=NOW() WHERE idCommande=?`,
       [statut, id]
     );
 
@@ -183,11 +221,11 @@ export async function updateStatut(req, res) {
       return res.status(404).json({ error: "Commande introuvable" });
 
     const [[cmd]] = await pool.query(
-      `SELECT * FROM commandes WHERE id=?`,
+      `SELECT * FROM commandes WHERE idCommande=?`,
       [id]
     );
 
-    res.json(cmd);
+    res.json({ ...cmd, idCommande: cmd.idCommande, idUser: cmd.user_idUser });
   } catch (e) {
     console.error("CMD_UPDATE_STATUT_ERR:", e);
     res.status(500).json({ error: "Erreur mise à jour statut" });
@@ -199,11 +237,140 @@ export async function remove(req, res) {
   try {
     const id = Number(req.params.idCommande);
 
-    await pool.query(`DELETE FROM commandes WHERE id=?`, [id]);
+    await pool.query(`DELETE FROM commandes WHERE idCommande=?`, [id]);
 
     res.status(204).end();
   } catch (e) {
     console.error("CMD_DELETE_ERR:", e);
     res.status(500).json({ error: "Erreur suppression commande" });
+  }
+}
+
+/** POST /api/commandes/:idCommande/checkout-session */
+export async function createCheckoutSession(req, res) {
+  try {
+    const stripe = getStripeClient();
+    if (!stripe) {
+      return res
+        .status(500)
+        .json({ error: "Configuration Stripe manquante (STRIPE_SECRET_KEY)." });
+    }
+
+    const idCommande = Number(req.params.idCommande);
+    const [[cmd]] = await pool.query(
+      "SELECT * FROM commandes WHERE idCommande=?",
+      [idCommande]
+    );
+    if (!cmd) return res.status(404).json({ error: "Commande introuvable" });
+
+    const role = req.user?.role;
+    const isManager = role === "gestionnaire" || role === "administrateur";
+    if (!isManager && Number(cmd.user_idUser) !== Number(req.user?.id)) {
+      return res.status(403).json({ error: "Accès refusé" });
+    }
+
+    const [items] = await pool.query(
+      `SELECT cl.quantite, cl.prix_unitaire, o.titre
+       FROM commandes_items cl
+       JOIN ouvrages o ON o.idOuvrage = cl.ouvrage_idOuvrage
+       WHERE cl.commande_idCommande=?`,
+      [idCommande]
+    );
+    if (!items.length) {
+      return res
+        .status(400)
+        .json({ error: "La commande ne contient aucun article." });
+    }
+
+    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+    const session = await stripe.checkout.sessions.create({
+      mode: "payment",
+      line_items: items.map((item) => ({
+        quantity: Number(item.quantite),
+        price_data: {
+          currency: "cad",
+          unit_amount: Math.round(Number(item.prix_unitaire) * 100),
+          product_data: { name: item.titre },
+        },
+      })),
+      metadata: {
+        commandeId: String(idCommande),
+        userId: String(cmd.user_idUser),
+      },
+      success_url: `${frontendUrl}/paiement/succes?commande=${idCommande}&session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${frontendUrl}/paiement/annule?commande=${idCommande}`,
+    });
+
+    await pool.query(
+      `INSERT INTO payments (commande_idCommande, provider, provider_payment_id, statut, amount)
+       VALUES (?, 'stripe', ?, 'pending', ?)`,
+      [idCommande, session.id, Number(cmd.total)]
+    );
+    await pool.query(
+      "UPDATE commandes SET mode_paiement='stripe', statut='en_attente' WHERE idCommande=?",
+      [idCommande]
+    );
+
+    res.json({ checkout_url: session.url, session_id: session.id });
+  } catch (e) {
+    console.error("STRIPE_SESSION_ERR:", e);
+    if (e?.type === "StripeConnectionError") {
+      return res.status(503).json({
+        error:
+          "Connexion a Stripe impossible pour le moment. Verifiez internet/DNS puis reessayez.",
+      });
+    }
+    res.status(500).json({ error: "Impossible de créer la session de paiement." });
+  }
+}
+
+/** POST /api/commandes/:idCommande/confirm-payment */
+export async function confirmPayment(req, res) {
+  try {
+    const stripe = getStripeClient();
+    if (!stripe) {
+      return res
+        .status(500)
+        .json({ error: "Configuration Stripe manquante (STRIPE_SECRET_KEY)." });
+    }
+    const idCommande = Number(req.params.idCommande);
+    const { session_id } = req.body;
+    if (!session_id) {
+      return res.status(400).json({ error: "session_id requis" });
+    }
+
+    const [[cmd]] = await pool.query(
+      "SELECT * FROM commandes WHERE idCommande=?",
+      [idCommande]
+    );
+    if (!cmd) return res.status(404).json({ error: "Commande introuvable" });
+
+    const role = req.user?.role;
+    const isManager = role === "gestionnaire" || role === "administrateur";
+    if (!isManager && Number(cmd.user_idUser) !== Number(req.user?.id)) {
+      return res.status(403).json({ error: "Accès refusé" });
+    }
+
+    const session = await stripe.checkout.sessions.retrieve(session_id);
+    const paid = session.payment_status === "paid";
+    if (!paid) {
+      return res.status(400).json({ error: "Le paiement n'est pas confirmé." });
+    }
+
+    await pool.query(
+      "UPDATE commandes SET statut='payee', mode_paiement='stripe', updated_at=NOW() WHERE idCommande=?",
+      [idCommande]
+    );
+    await pool.query(
+      `UPDATE payments
+       SET statut='paid'
+       WHERE commande_idCommande=? AND provider='stripe' AND provider_payment_id=?`,
+      [idCommande, session_id]
+    );
+
+    res.json({ ok: true, commande_id: idCommande, statut: "payee" });
+  } catch (e) {
+    console.error("STRIPE_CONFIRM_ERR:", e);
+    res.status(500).json({ error: "Impossible de confirmer le paiement." });
   }
 }

@@ -5,9 +5,11 @@ import {
   updateItem,
   removeItem,
 } from "../controllers/panier.controller.js";
+import { requireAuth } from "../middlewares/auth.js";
 // addItem / updateItem / removeItem existent déjà dans ton panier.controller.js
 
 const router = Router();
+router.use(requireAuth);
 
 // Lister les items d'un panier (par panierId OU clientId)
 router.get("/", listItems);

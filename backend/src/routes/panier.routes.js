@@ -6,12 +6,10 @@ import {
   removeItem,
   clearPanier,
 } from "../controllers/panier.controller.js";
-// Si tu veux protéger avec JWT :
-// import { requireAuth } from "../middlewares/auth.js";
+import { requireAuth } from "../middlewares/auth.js";
 
 const router = Router();
-
-// router.use(requireAuth); // dé-commente si tu veux exiger un token
+router.use(requireAuth);
 
 router.get("/", getPanier); // GET /api/panier?clientId=3
 router.post("/items", addItem); // POST /api/panier/items

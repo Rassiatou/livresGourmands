@@ -11,9 +11,14 @@ export async function list(req, res) {
   try {
     const { proprietaireId, code } = req.query;
     const params = [];
+    const role = req.user?.role;
+    const isManager = role === "gestionnaire" || role === "administrateur";
     let sql = `SELECT idListe, nom, proprietaire_idUser, code_partage, public, date_creation
                FROM listes_cadeaux WHERE 1=1`;
-    if (proprietaireId) {
+    if (!isManager) {
+      sql += " AND proprietaire_idUser=?";
+      params.push(Number(req.user.id));
+    } else if (proprietaireId) {
       sql += " AND proprietaire_idUser=?";
       params.push(Number(proprietaireId));
     }
@@ -43,9 +48,9 @@ export async function getOne(req, res) {
 
     const [items] = await pool.query(
       `SELECT li.idListeItem, li.quantite_souhaitee,
-              o.idOuvrage, o.titre
+              o.id AS idOuvrage, o.titre
        FROM liste_items li
-       JOIN ouvrages o ON o.idOuvrage=li.ouvrage_idOuvrage
+       JOIN ouvrages o ON o.id=li.ouvrage_idOuvrage
        WHERE li.liste_idListe=?`,
       [id]
     );
@@ -60,10 +65,15 @@ export async function getOne(req, res) {
 export async function create(req, res) {
   try {
     const { nom, proprietaire_idUser, public: isPublic = 0 } = req.body;
-    if (!nom || !proprietaire_idUser)
+    const role = req.user?.role;
+    const isManager = role === "gestionnaire" || role === "administrateur";
+    const resolvedOwnerId = isManager
+      ? Number(proprietaire_idUser || req.user.id)
+      : Number(req.user.id);
+    if (!nom || !resolvedOwnerId)
       return res
         .status(400)
-        .json({ error: "nom et proprietaire_idUser requis" });
+        .json({ error: "nom et propriétaire requis" });
 
     // code de partage unique
     let code = genCode(10);
@@ -71,7 +81,7 @@ export async function create(req, res) {
     const [r] = await pool.query(
       `INSERT INTO listes_cadeaux (nom, proprietaire_idUser, code_partage, public)
        VALUES (?,?,?,?)`,
-      [nom, Number(proprietaire_idUser), code, Number(isPublic)]
+      [nom, resolvedOwnerId, code, Number(isPublic)]
     );
     const [[lst]] = await pool.query(
       `SELECT * FROM listes_cadeaux WHERE idListe=?`,
@@ -126,9 +136,9 @@ export async function listItems(req, res) {
     const id = Number(req.params.idListe);
     const [items] = await pool.query(
       `SELECT li.idListeItem, li.quantite_souhaitee,
-              o.idOuvrage, o.titre
+              o.id AS idOuvrage, o.titre
        FROM liste_items li
-       JOIN ouvrages o ON o.idOuvrage=li.ouvrage_idOuvrage
+       JOIN ouvrages o ON o.id=li.ouvrage_idOuvrage
        WHERE li.liste_idListe=?`,
       [id]
     );

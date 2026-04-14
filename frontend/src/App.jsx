@@ -1,5 +1,5 @@
 import { Routes, Route } from "react-router-dom";
-import Navbar from "./components/Navbar.jsx";   // 🔥 Ajout important
+import Navbar from "./components/Navbar.jsx";
 import Footer from "./components/Footer.jsx";
 
 import HomePage from "./pages/HomePage.jsx";
@@ -8,12 +8,12 @@ import CartPage from "./pages/CartPage.jsx";
 import NotFoundPage from "./pages/NotFoundPage.jsx";
 import LoginPage from "./pages/LoginPage.jsx";
 import RegisterPage from "./pages/RegisterPage.jsx";
+import PaymentSuccessPage from "./pages/PaymentSuccessPage.jsx";
+import PaymentCancelPage from "./pages/PaymentCancelPage.jsx";
 
 function App() {
   return (
     <div className="d-flex flex-column min-vh-100">
-      
-      {/* 🔥 La navbar est ici, en haut de toutes les pages */}
       <Navbar />
 
       <main className="flex-fill py-4">
@@ -21,6 +21,8 @@ function App() {
           <Route path="/" element={<HomePage />} />
           <Route path="/ouvrages/:id" element={<ProductPage />} />
           <Route path="/panier" element={<CartPage />} />
+          <Route path="/paiement/succes" element={<PaymentSuccessPage />} />
+          <Route path="/paiement/annule" element={<PaymentCancelPage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="*" element={<NotFoundPage />} />
           <Route path="/register" element={<RegisterPage />} />

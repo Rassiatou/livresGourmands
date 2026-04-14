@@ -2,11 +2,19 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { pool } from "../db.js";
 
+function resolveUserId(user) {
+  return user?.id ?? user?.idUser;
+}
+
+function getJwtSecret() {
+  return process.env.JWT_SECRET?.trim() || "dev_secret_change_me";
+}
+
 function sign(user) {
-  // user.id (et plus idUser)
+  const userId = resolveUserId(user);
   return jwt.sign(
-    { id: user.id, email: user.email, role: user.role },
-    process.env.JWT_SECRET,
+    { id: userId, idUser: userId, email: user.email, role: user.role },
+    getJwtSecret(),
     { expiresIn: "7d" }
   );
 }
@@ -21,7 +29,7 @@ export async function register(req, res) {
 
     // vérifier si l'email existe déjà
     const [exists] = await pool.query(
-      "SELECT id FROM users WHERE email=?",
+      "SELECT idUser AS id FROM users WHERE email=?",
       [email]
     );
     if (exists.length)
@@ -38,12 +46,12 @@ export async function register(req, res) {
 
     // récupérer l'utilisateur créé
     const [[user]] = await pool.query(
-      "SELECT id, email, role FROM users WHERE id=?",
+      "SELECT idUser AS id, idUser, nom, email, role FROM users WHERE idUser=?",
       [r.insertId]
     );
 
     const token = sign(user);
-    res.status(201).json({ token, user });
+    res.status(201).json({ token, user: { ...user, idUser: resolveUserId(user) } });
   } catch (e) {
     console.error("REGISTER_ERR:", e);
     res.status(500).json({ error: "Erreur inscription" });
@@ -58,7 +66,7 @@ export async function login(req, res) {
       return res.status(400).json({ error: "email, password requis" });
 
     const [rows] = await pool.query(
-      "SELECT * FROM users WHERE email=? AND actif=1",
+      "SELECT idUser AS id, idUser, nom, email, password_hash, role, actif, created_at FROM users WHERE email=? AND actif=1",
       [email]
     );
     if (!rows.length)
@@ -72,7 +80,13 @@ export async function login(req, res) {
     const token = sign(user);
     res.json({
       token,
-      user: { id: user.id, email: user.email, role: user.role },
+      user: {
+        id: resolveUserId(user),
+        idUser: resolveUserId(user),
+        nom: user.nom,
+        email: user.email,
+        role: user.role,
+      },
     });
   } catch (e) {
     console.error("LOGIN_ERR:", e);
@@ -84,12 +98,12 @@ export async function login(req, res) {
 export async function me(req, res) {
   try {
     const [[user]] = await pool.query(
-      "SELECT id, nom, email, role, actif, created_at FROM users WHERE id=?",
+      "SELECT idUser AS id, idUser, nom, email, role, actif, created_at FROM users WHERE idUser=?",
       [req.user.id]      // ici aussi, on utilise id
     );
     if (!user)
       return res.status(404).json({ error: "Utilisateur introuvable" });
-    res.json(user);
+    res.json({ ...user, idUser: resolveUserId(user) });
   } catch (e) {
     console.error("ME_ERR:", e);
     res.status(500).json({ error: "Erreur lecture profil" });
