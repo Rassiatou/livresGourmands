@@ -26,10 +26,10 @@ function App() {
           <Route path="/paiement/succes" element={<PaymentSuccessPage />} />
           <Route path="/paiement/annule" element={<PaymentCancelPage />} />
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/register" element={<RegisterPage />} />
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
           <Route path="/reset-password" element={<ResetPasswordPage />} />
           <Route path="*" element={<NotFoundPage />} />
-          <Route path="/register" element={<RegisterPage />} />
         </Routes>
       </main>
 
