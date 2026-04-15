@@ -83,6 +83,10 @@ export default function LoginPage() {
             </button>
           </form>
 
+          <p className="mt-3 text-center">
+            <Link to="/forgot-password">Mot de passe oublié ?</Link>
+          </p>
+
           <p className="mt-3 text-center text-muted">
             Pas encore de compte ? <Link to="/register">Créer un compte</Link>
           </p>
