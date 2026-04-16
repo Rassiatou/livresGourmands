@@ -58,9 +58,14 @@ export default function Navbar() {
             </Link>
 
             {!isAuthenticated ? (
-              <Link to="/login" className="btn btn-outline-light">
-                Connexion
-              </Link>
+              <>
+                <Link to="/register" className="btn btn-warning text-dark">
+                  Creer un compte
+                </Link>
+                <Link to="/login" className="btn btn-outline-light">
+                  Connexion
+                </Link>
+              </>
             ) : (
               <div className="account-chip">
                 <div className="account-avatar">{initial}</div>
