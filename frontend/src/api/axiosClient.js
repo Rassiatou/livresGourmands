@@ -1,8 +1,16 @@
 // src/api/axiosClient.js
 import axios from "axios";
 
+function resolveApiBaseURL() {
+  const fromEnv = import.meta.env.VITE_API_URL?.trim();
+  if (fromEnv) return fromEnv;
+  if (import.meta.env.DEV) return "http://localhost:3001/api";
+  if (typeof window !== "undefined") return `${window.location.origin}/api`;
+  return "http://localhost:3001/api";
+}
+
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || "http://localhost:3001/api",
+  baseURL: resolveApiBaseURL(),
 });
 
 api.interceptors.request.use((config) => {
